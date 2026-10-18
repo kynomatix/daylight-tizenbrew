@@ -9,7 +9,7 @@ It requires a private Daylight service running on your home computer.
 In TizenBrew, add a **GitHub module** and enter:
 
 ```text
-kynomatix/daylight-tizenbrew@v0.3.0
+kynomatix/daylight-tizenbrew@v0.3.1
 ```
 
 Repository: https://github.com/kynomatix/daylight-tizenbrew
@@ -74,6 +74,16 @@ forecasts are labelled and do not give a current rain-planning summary.
 
 ### Household energy
 
+**What we make & use** and the larger Energy chart default to a smoothed trend.
+A centred five-minute average softens short spikes; shape-preserving curves join
+the plotted values without overshooting them. Gaps of up to 15 minutes are
+connected, with joins over three minutes dotted to identify estimates. Longer
+outages remain blank. **View raw readings** switches both charts back to the
+original values and straight lines with three-minute gap breaks.
+
+This only changes the display. Recorded history, live power cards and household
+advice still use the original readings; no interpolated samples are saved.
+
 The overview leads with a household explanation such as **Power to spare**,
 **Solar is helping**, or **Waiting for a fresh reading**. Spare-power suggestions
 require a recent, online, alarm-free reading, confirmed export direction, and
@@ -90,7 +100,8 @@ page with everyday definitions and a short explanation of kW.
 - UV is a modelled index and daily peak from Open-Meteo, not an ARPANSA detector.
 - Solar readings come from the private Eveready monitor. Old or offline readings
   are labelled. Device-clock interpretation is unresolved.
-- History plots power by receipt time and breaks lines across collection gaps.
+- History plots power by receipt time. Short gaps can be interpolated on screen;
+  longer outages remain visible, and original readings are available in raw mode.
   It does not claim daily kWh totals or schedule workloads.
 
 The demo is explicitly labelled and uses synthetic values. It works without a

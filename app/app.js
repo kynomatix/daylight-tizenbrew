@@ -5,6 +5,7 @@
   var state = null, demo = false, poll = null, view = 'overview', connection = null, connectionNotice = '';
   var hourlyPage = 0;
   var serviceDisconnected = false;
+  var smoothCharts = true;
   var browserStorage = null;
   try { browserStorage = window.localStorage; } catch (_) {}
   var connectionStore = window.DaylightConnectionStorage.create({storage: browserStorage, location: location,
@@ -30,19 +31,26 @@
   }
   function chart(id, rows) {
     var holder = $(id), width = 620, height = id === 'large-chart' ? 300 : 135, pad = 24;
-    rows = (rows || []).filter(function (r) { return typeof r.time === 'number' && typeof r.solar_watts === 'number' && typeof r.home_watts === 'number'; });
+    var prepared = window.DaylightChart.prepare(rows, smoothCharts);
+    rows = prepared.rows;
     if (rows.length < 2) { holder.innerHTML = '<div class="chart-empty">History is gathering.<br>At least two distinct readings are needed.</div>'; return; }
     var first = rows[0].time, last = rows[rows.length - 1].time, span = Math.max(60, last - first);
     var max = Math.max.apply(null, rows.map(function (r) { return Math.max(r.solar_watts, r.home_watts); }).concat([1000]));
     var x = function (t) { return pad + (t - first) / span * (width - pad * 2); };
     var y = function (v) { return height - pad - v / max * (height - pad * 2); };
-    var svg = '<svg viewBox="0 0 ' + width + ' ' + height + '" role="img" aria-label="Solar and household power by receipt time">';
+    var svg = '<svg viewBox="0 0 ' + width + ' ' + height + '" role="img" aria-label="' + (smoothCharts ? 'Smoothed solar and household power trends; dotted sections are estimated' : 'Recorded solar and household power') + ' by receipt time">';
     [0, .5, 1].forEach(function (f) { var yy = y(max * f); svg += '<path d="M24 ' + yy + 'H596" stroke="#31434c" stroke-width="1"/><text x="0" y="' + (yy + 3) + '">' + value(max * f / 1000, 1) + '</text>'; });
     ['solar_watts', 'home_watts'].forEach(function (key, j) {
-      var path = '';
-      rows.forEach(function (r, i) { path += (i === 0 || r.time - rows[i - 1].time > 180 ? 'M' : 'L') + x(r.time).toFixed(1) + ' ' + y(r[key]).toFixed(1) + ' '; });
-      svg += '<path d="' + path + '" fill="none" stroke="' + (j ? '#91a9cf' : '#b9efd8') + '" stroke-width="2.5" stroke-linejoin="round"/>';
-      rows.forEach(function (r, i) { if (rows.length < 15 || i === rows.length - 1) svg += '<circle cx="' + x(r.time) + '" cy="' + y(r[key]) + '" r="2" fill="' + (j ? '#91a9cf' : '#b9efd8') + '"/>'; });
+      var color = j ? '#91a9cf' : '#b9efd8';
+      prepared.segments.forEach(function (segment) {
+        window.DaylightChart.paths(segment,key,smoothCharts,x,y).forEach(function (path) {
+          svg += '<path d="'+path.d+'" fill="none" stroke="'+color+'" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"'+(path.estimated ? ' stroke-dasharray="2 5" opacity=".8"' : '')+'/>';
+        });
+        segment.forEach(function (r,i) {
+          if (segment.length === 1 || !smoothCharts && rows.length < 15 || segment === prepared.segments[prepared.segments.length-1] && i === segment.length-1)
+            svg += '<circle cx="'+x(r.time)+'" cy="'+y(r[key])+'" r="2" fill="'+color+'"/>';
+        });
+      });
     });
     svg += '<text x="24" y="' + (height - 3) + '">' + formatTime(first, {hour: '2-digit', minute: '2-digit'}) + '</text><text x="596" text-anchor="end" y="' + (height - 3) + '">' + formatTime(last, {hour: '2-digit', minute: '2-digit'}) + '</text></svg>';
     holder.innerHTML = svg;
@@ -88,7 +96,9 @@
     text('solar-status', demo ? 'DEMO READING' : serviceOffline ? 'NOT CONNECTED' : !e.available ? 'NO READING' : !e.online ? 'OFFLINE' : e.alarm ? 'CHECK APP' : old ? 'OLDER READING' : 'JUST UPDATED');
     text('solar-note', e.available ? 'Last reading received ' + age(e.received_at) : 'Waiting for a reading from Eveready.');
     chart('mini-chart', e.history); chart('large-chart', e.history);
-    text('history-note', (e.history || []).length + ' readings collected · gaps remain visible');
+    text('history-note', (e.history || []).length + ' readings · ' + (smoothCharts ? '5-minute smoothing · dotted joins estimated · gaps over 15 min remain' : 'Raw readings · gaps over 3 min remain'));
+    text('large-history-note', (smoothCharts ? 'Five-minute smoothed trends. Short gaps are interpolated with dotted joins; gaps over 15 minutes remain visible.' : 'Original recorded values. Gaps over three minutes remain visible.') + ' Plotted by first receipt time; this is not a daily energy total.');
+    ['chart-style','chart-style-large'].forEach(function (id) { text(id,smoothCharts ? 'View raw readings' : 'View smoothed trend'); });
     renderHourly(data, serviceOffline);
     updateClock();
   }
@@ -185,6 +195,8 @@
   $('hourly-prev').onclick = function () { hourlyPage = Math.max(0,hourlyPage-1); if (state) renderHourly(state); if ($('hourly-prev').disabled) $('hourly-next').focus(); };
   $('hourly-next').onclick = function () { hourlyPage++; if (state) renderHourly(state); if ($('hourly-next').disabled) $('hourly-prev').focus(); };
   $('energy-explain').onclick = function () { switchView('energy'); $('energy-tab').focus(); };
+  function toggleChartStyle() { smoothCharts = !smoothCharts; if (state) render(state,serviceDisconnected); }
+  $('chart-style').onclick = toggleChartStyle; $('chart-style-large').onclick = toggleChartStyle;
   $('disconnect').onclick = function () {
     $('disconnect').disabled = true;
     connectionStore.forget().then(function () {

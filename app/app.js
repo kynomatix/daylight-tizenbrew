@@ -2,8 +2,12 @@
 (function () {
   'use strict';
   var $ = function (id) { return document.getElementById(id); };
-  var state = null, demo = false, poll = null, view = 'overview', connection = null;
-  try { connection = JSON.parse(localStorage.getItem('daylight.connection')); } catch (_) {}
+  var state = null, demo = false, poll = null, view = 'overview', connection = null, connectionNotice = '';
+  var browserStorage = null;
+  try { browserStorage = window.localStorage; } catch (_) {}
+  var connectionStore = window.DaylightConnectionStorage.create({storage: browserStorage, location: location,
+    fetch: function (url, options) { return fetch(url, options); },
+    delay: function (ms) { return new Promise(function (resolve) { setTimeout(resolve, ms); }); }});
   var timezone = 'UTC';
   function value(n, digits) { return typeof n === 'number' && isFinite(n) ? n.toFixed(digits || 0) : '—'; }
   function text(id, str) { $(id).textContent = str; }
@@ -85,7 +89,7 @@
   function updateClock() { text('clock', formatTime(Date.now() / 1000, {hour: '2-digit', minute: '2-digit'})); }
   function banner(message) { var el = $('connection-banner'); el.hidden = false; el.firstChild.textContent = message + ' '; }
   function openSetup() {
-    text('pair-message', 'The TV stores only its connection token. Your battery login stays on the PC.');
+    text('pair-message', connectionNotice || 'The TV stores only its connection token. Your battery login stays on the PC.');
     $('service-url').value = connection && connection.url || (/^https?:/.test(location.protocol) ? location.origin : '');
     $('pair-code').value = '';
     if (typeof $('setup-dialog').showModal === 'function') $('setup-dialog').showModal(); else $('setup-dialog').setAttribute('open', '');
@@ -101,7 +105,9 @@
     if (demo) { render(demoState()); return; }
     if (!connection || !connection.url || !connection.token) { banner('Connect to your private service, or explore the demo.'); return; }
     request(connection.url + '/api/state', {headers: {Authorization: 'Bearer ' + connection.token}}).then(function (data) {
-      render(data); text('mode', 'PAIRED DISPLAY'); $('connection-banner').hidden = true; $('connection-dot').classList.add('connected'); text('connection-label', 'Private service · updated ' + age(data.generated_at));
+      render(data); text('mode', 'PAIRED DISPLAY');
+      if (connectionNotice) banner(connectionNotice); else $('connection-banner').hidden = true;
+      $('connection-dot').classList.add('connected'); text('connection-label', 'Private service · updated ' + age(data.generated_at));
     }).catch(function (error) {
       text('mode', 'SERVICE OFFLINE'); $('connection-dot').classList.remove('connected');
       banner(error.message === 'Failed to fetch' ? 'Service unavailable. Check that the PC service is open and both devices share the home network.' : error.message);
@@ -116,7 +122,15 @@
   $('refresh').onclick = refresh; $('demo-button').onclick = startDemo; $('demo-shortcut').onclick = startDemo;
   $('overview-tab').onclick = function () { switchView('overview'); }; $('energy-tab').onclick = function () { switchView('energy'); };
   $('energy-explain').onclick = function () { switchView('energy'); $('energy-tab').focus(); };
-  $('disconnect').onclick = function () { try { localStorage.removeItem('daylight.connection'); } catch (_) {} connection = null; demo = false; state = null; render({}); text('mode', 'NOT CONNECTED'); $('connection-dot').classList.remove('connected'); text('connection-label', 'Waiting for your private service'); text('pair-message', 'This display has forgotten its connection.'); banner('Display disconnected. Pair again when ready.'); };
+  $('disconnect').onclick = function () {
+    $('disconnect').disabled = true;
+    connectionStore.forget().then(function () {
+      connection = null; connectionNotice = ''; demo = false; state = null; render({}); text('mode', 'NOT CONNECTED');
+      $('connection-dot').classList.remove('connected'); text('connection-label', 'Waiting for your private service');
+      text('pair-message', 'This display has forgotten its connection.'); banner('Display disconnected. Pair again when ready.');
+    }).catch(function () { text('pair-message', 'Could not remove the saved TV pairing. Restart TizenBrew and try Forget display again.');
+    }).finally(function () { $('disconnect').disabled = false; });
+  };
   $('pair-form').onsubmit = function (event) {
     event.preventDefault();
     var endpoint;
@@ -125,8 +139,10 @@
     $('pair-button').disabled = true; text('pair-message', 'Pairing with your private service…');
     request(endpoint.origin + '/api/pair', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({code: code})}).then(function (data) {
       connection = {url: endpoint.origin, token: data.token}; demo = false;
-      try { localStorage.setItem('daylight.connection', JSON.stringify(connection)); } catch (_) { text('pair-message', 'Connected, but this display could not remember its pairing.'); }
-      closeSetup(); startPoll();
+      return connectionStore.save(connection).then(function (remembered) {
+        connectionNotice = remembered ? '' : 'Connected for this visit. Pairing could not be saved. Restart TizenBrew to enable remembered pairing.';
+        closeSetup(); startPoll();
+      });
     }).catch(function (error) { text('pair-message', error.message === 'Failed to fetch' ? 'Could not reach the service. Check its address and your home network.' : error.message); }).finally(function () { $('pair-button').disabled = false; });
   };
   document.addEventListener('keydown', function (event) {
@@ -143,6 +159,11 @@
   });
   document.addEventListener('visibilitychange', function () { if (!document.hidden) refresh(); });
   setInterval(updateClock, 30000); render({});
-  if (new URLSearchParams(location.search).get('demo') === '1') startDemo(); else startPoll();
+  if (new URLSearchParams(location.search).get('demo') === '1') startDemo(); else {
+    $('pair-button').disabled = true;
+    banner('Restoring your saved connection…');
+    connectionStore.load().then(function (saved) { connection = saved; startPoll();
+    }).finally(function () { $('pair-button').disabled = false; });
+  }
   $('overview-tab').focus();
 }());

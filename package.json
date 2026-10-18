@@ -1,11 +1,12 @@
 {
   "name": "tizenbrew-daylight-dashboard",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "private": true,
   "description": "A private home dashboard for weather, air quality and solar energy",
   "packageType": "app",
   "appName": "Daylight",
   "appPath": "app/index.html",
+  "serviceFile": "service.js",
   "keys": ["ColorF0Red", "ColorF3Blue"],
-  "files": ["app", "README.md"]
+  "files": ["app", "service.js", "README.md"]
 }

@@ -30,8 +30,13 @@ https://github.com/reisxd/TizenBrew/blob/main/docs/MODULES.md
 3. Enter the service address and the one-time six-digit code shown on the PC.
 4. Keep the Eveready monitoring window open for solar updates and history.
 
-The TV stores the service address and display token in its own local storage.
-It never receives the Eveready login. Pairing codes expire in five minutes and
+Version 0.2.1 adds a TizenBrew service that stores the service address and display
+token in a private file on the TV, independently of browser storage. Fully close
+and reopen TizenBrew after updating, then pair once. Daylight restores the saved
+connection when reopened, even after a TizenBrew restart. **Forget display**
+removes the saved connection. If saving fails, a visible banner explains that
+the pairing is only for the current visit. Browser previews use local storage.
+The TV never receives the Eveready login. Pairing codes expire in five minutes and
 are limited to five attempts; generate a new code on the PC if needed. Use a
 trusted home network; the initial LAN service uses HTTP, not TLS. Do not forward
 the service port to the internet. Network/firewall access may need configuration

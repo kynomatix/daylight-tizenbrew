@@ -9,7 +9,7 @@ It requires a private Daylight service running on your home computer.
 In TizenBrew, add a **GitHub module** and enter:
 
 ```text
-kynomatix/daylight-tizenbrew@v0.3.1
+kynomatix/daylight-tizenbrew@v0.3.2
 ```
 
 Repository: https://github.com/kynomatix/daylight-tizenbrew
@@ -17,6 +17,10 @@ Repository: https://github.com/kynomatix/daylight-tizenbrew
 The versioned entry avoids stale files from the unversioned download cache.
 When updating from the old entry, replace that module entry and restart
 TizenBrew. The TV's saved Daylight connection is shared across module versions.
+Daylight's top bar shows **Daylight 0.3.2**, read from the running dashboard code.
+Use that to identify this build, separately from TizenBrew's own 2.x version
+or a cached version on its module tile. Module updates require no Developer
+Mode Host PC IP change; they are downloaded through TizenBrew.
 
 This separate repository contains only the display module: `package.json` at
 the repository root, plus `app/` and this README. The private PC service and

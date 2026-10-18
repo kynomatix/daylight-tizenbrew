@@ -1,7 +1,9 @@
 /* Generic display code. No household location, account, server or token belongs here. */
 (function () {
   'use strict';
+  var APP_VERSION = '0.3.2';
   var $ = function (id) { return document.getElementById(id); };
+  if ($('build-version')) $('build-version').textContent = 'Daylight ' + APP_VERSION;
   var state = null, demo = false, poll = null, view = 'overview', connection = null, connectionNotice = '';
   var hourlyPage = 0;
   var serviceDisconnected = false;

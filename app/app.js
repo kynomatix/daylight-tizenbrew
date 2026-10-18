@@ -1,13 +1,14 @@
 /* Generic display code. No household location, account, server or token belongs here. */
 (function () {
   'use strict';
-  var APP_VERSION = '0.3.2';
+  var APP_VERSION = '0.3.3';
   var $ = function (id) { return document.getElementById(id); };
   if ($('build-version')) $('build-version').textContent = 'Daylight ' + APP_VERSION;
   var state = null, demo = false, poll = null, view = 'overview', connection = null, connectionNotice = '';
   var hourlyPage = 0;
   var serviceDisconnected = false;
   var smoothCharts = true;
+  var isTizenBrew = location.origin === 'http://127.0.0.1:8081' && /^\/module\//.test(location.pathname || '');
   var browserStorage = null;
   try { browserStorage = window.localStorage; } catch (_) {}
   var connectionStore = window.DaylightConnectionStorage.create({storage: browserStorage, location: location,
@@ -160,13 +161,37 @@
   function updateClock() { text('clock', formatTime(Date.now() / 1000, {hour: '2-digit', minute: '2-digit'})); }
   function banner(message) { var el = $('connection-banner'); el.hidden = false; el.firstChild.textContent = message + ' '; }
   function openSetup() {
+    if ($('exit-dialog').hasAttribute('open')) closeExit();
+    text('settings-intro', connection && connection.token ? 'This display is paired. Use the connection fields below only if you want to pair it again or change the PC service.' : 'Open Start Dashboard on your computer, then enter its service address and six-digit pairing code.');
     text('pair-message', connectionNotice || 'The TV stores only its connection token. Your battery login stays on the PC.');
     $('service-url').value = connection && connection.url || (/^https?:/.test(location.protocol) ? location.origin : '');
     $('pair-code').value = '';
     if (typeof $('setup-dialog').showModal === 'function') $('setup-dialog').showModal(); else $('setup-dialog').setAttribute('open', '');
-    $('service-url').focus();
+    if (connection && connection.token) $('close-settings').focus(); else $('service-url').focus();
   }
   function closeSetup() { if (typeof $('setup-dialog').close === 'function') $('setup-dialog').close(); else $('setup-dialog').removeAttribute('open'); $('settings').focus(); }
+  function openExit() {
+    if ($('setup-dialog').hasAttribute('open')) closeSetup();
+    var returnToMenu = isTizenBrew && window.history && window.history.length > 1;
+    text('exit-message', returnToMenu ? 'Return to the TizenBrew app menu? Your saved pairing stays remembered, and collection continues on the PC.' : 'Leave this dashboard? Your pairing stays remembered, and collection continues on the PC.');
+    text('exit-confirm', returnToMenu ? 'Return to TizenBrew' : isTizenBrew ? 'Exit to TV' : 'Close dashboard');
+    if (typeof $('exit-dialog').showModal === 'function') $('exit-dialog').showModal(); else $('exit-dialog').setAttribute('open','');
+    $('exit-cancel').focus();
+  }
+  function closeExit() {
+    if (typeof $('exit-dialog').close === 'function') $('exit-dialog').close(); else $('exit-dialog').removeAttribute('open');
+    $(view === 'hourly' ? 'hourly-tab' : view === 'energy' ? 'energy-tab' : 'overview-tab').focus();
+  }
+  function leaveDashboard() {
+    // TizenBrew opens app modules using location.href, so Back returns to its
+    // existing menu without guessing a file URL or restarting the launcher.
+    if (window.history && window.history.length > 1) { window.history.back(); return; }
+    try {
+      if (window.tizen && window.tizen.application) { window.tizen.application.getCurrentApplication().exit(); return; }
+    } catch (_) {}
+    if (!isTizenBrew) { window.close(); text('exit-message','Close this browser tab to leave the dashboard preview.'); return; }
+    text('exit-message','The launcher has no previous page available. Press Home, or press and hold Back to close TizenBrew. Your pairing will stay remembered.');
+  }
   function request(url, options) {
     var controller = new AbortController(), timer = setTimeout(function () { controller.abort(); }, 12000);
     options = Object.assign({}, options || {}, {signal: controller.signal, cache: 'no-store'});
@@ -190,6 +215,9 @@
   function startDemo() { demo = true; text('mode', 'DEMO · SAMPLE DATA'); banner('Demo mode: all values are illustrative. Pair your private service for real readings.'); text('connection-label', 'Demo data · no location configured in this module'); $('connection-dot').classList.remove('connected'); closeSetup(); startPoll(); }
   function switchView(name) { view = name; $('overview').hidden = name !== 'overview'; $('energy').hidden = name !== 'energy'; $('hourly').hidden = name !== 'hourly'; document.querySelectorAll('[data-view]').forEach(function (b) { b.classList.toggle('selected', b.dataset.view === name); }); if (state) chart('large-chart', state.energy && state.energy.history); }
   $('settings').onclick = openSetup; $('setup-shortcut').onclick = openSetup; $('close-settings').onclick = closeSetup;
+  $('settings-exit').onclick = openExit; $('exit-cancel').onclick = closeExit; $('exit-confirm').onclick = leaveDashboard;
+  $('setup-dialog').addEventListener('cancel',function (event) { event.preventDefault(); closeSetup(); });
+  $('exit-dialog').addEventListener('cancel',function (event) { event.preventDefault(); closeExit(); });
   $('refresh').onclick = refresh; $('demo-button').onclick = startDemo; $('demo-shortcut').onclick = startDemo;
   $('overview-tab').onclick = function () { switchView('overview'); }; $('energy-tab').onclick = function () { switchView('energy'); };
   $('hourly-tab').onclick = function () { switchView('hourly'); };
@@ -224,11 +252,18 @@
   };
   document.addEventListener('keydown', function (event) {
     var code = event.keyCode;
-    if (code === 10009 || event.key === 'Escape') { event.preventDefault(); if ($('setup-dialog').hasAttribute('open')) closeSetup(); else if (view !== 'overview') { switchView('overview'); $('overview-tab').focus(); } else openSetup(); return; }
+    if (code === 10009 || event.key === 'Escape') {
+      event.preventDefault(); event.stopPropagation();
+      if ($('exit-dialog').hasAttribute('open')) closeExit();
+      else if ($('setup-dialog').hasAttribute('open')) closeSetup();
+      else if (view !== 'overview') { switchView('overview'); $('overview-tab').focus(); }
+      else openExit();
+      return;
+    }
     if (code === 403) { refresh(); return; } if (code === 406) { openSetup(); return; }
     if ([37,38,39,40].indexOf(code) === -1 || /INPUT/.test(document.activeElement.tagName) && (code === 37 || code === 39)) return;
     event.preventDefault();
-    var parent = $('setup-dialog').hasAttribute('open') ? $('setup-dialog') : document;
+    var parent = $('exit-dialog').hasAttribute('open') ? $('exit-dialog') : $('setup-dialog').hasAttribute('open') ? $('setup-dialog') : document;
     var controls = Array.prototype.slice.call(parent.querySelectorAll('button:not([disabled]),input:not([disabled])')).filter(function (el) { return el.getClientRects().length > 0; });
     if (!controls.length) return;
     var index = controls.indexOf(document.activeElement), direction = code === 37 || code === 38 ? -1 : 1;

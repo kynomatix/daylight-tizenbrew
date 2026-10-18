@@ -9,7 +9,7 @@ It requires a private Daylight service running on your home computer.
 In TizenBrew, add a **GitHub module** and enter:
 
 ```text
-kynomatix/daylight-tizenbrew@v0.3.2
+kynomatix/daylight-tizenbrew@v0.3.3
 ```
 
 Repository: https://github.com/kynomatix/daylight-tizenbrew
@@ -17,7 +17,7 @@ Repository: https://github.com/kynomatix/daylight-tizenbrew
 The versioned entry avoids stale files from the unversioned download cache.
 When updating from the old entry, replace that module entry and restart
 TizenBrew. The TV's saved Daylight connection is shared across module versions.
-Daylight's top bar shows **Daylight 0.3.2**, read from the running dashboard code.
+The cog opens **Settings**, which shows **Daylight 0.3.3**, read from the running dashboard code.
 Use that to identify this build, separately from TizenBrew's own 2.x version
 or a cached version on its module tile. Module updates require no Developer
 Mode Host PC IP change; they are downloaded through TizenBrew.
@@ -51,7 +51,12 @@ the service port to the internet. Network/firewall access may need configuration
 on the PC; this project does not change firewall rules automatically.
 
 Use arrows and Enter to navigate. In a text field, Up/Down moves between controls;
-Left/Right edits text. Back closes settings or returns to Overview. Red refreshes
+Left/Right edits text. Back closes Settings, or returns from Hourly/Energy to
+Overview. Back on Overview opens **Leave Daylight?**, with **Stay here** focused
+by default. Confirm to return to the existing TizenBrew menu; **Exit Daylight**
+in Settings opens the same prompt. Leaving does not forget pairing or stop PC
+collection. If there is no previous launcher page, the app uses native exit when
+available, otherwise explains how to leave using the TV remote. Red refreshes
 the display and Blue opens settings. The module refreshes on return from the
 background; the PC does the collection independently of the TV.
 

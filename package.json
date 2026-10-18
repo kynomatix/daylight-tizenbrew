@@ -1,6 +1,6 @@
 {
   "name": "tizenbrew-daylight-dashboard",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "private": true,
   "description": "A private home dashboard for weather, air quality and solar energy",
   "packageType": "app",

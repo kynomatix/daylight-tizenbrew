@@ -3,6 +3,8 @@
   'use strict';
   var $ = function (id) { return document.getElementById(id); };
   var state = null, demo = false, poll = null, view = 'overview', connection = null, connectionNotice = '';
+  var hourlyPage = 0;
+  var serviceDisconnected = false;
   var browserStorage = null;
   try { browserStorage = window.localStorage; } catch (_) {}
   var connectionStore = window.DaylightConnectionStorage.create({storage: browserStorage, location: location,
@@ -22,7 +24,9 @@
   function demoState() {
     var now = Date.now() / 1000, history = [];
     for (var i = 0; i < 90; i++) { var t = now - (90 - i) * 60; history.push({time: t, solar_watts: Math.max(0, 1800 + Math.sin(i / 15) * 1000 + i * 14), home_watts: 850 + Math.sin(i / 5) * 190}); }
-    return {generated_at: now, energy: {available: true, online: true, alarm: false, stale: false, received_at: now, solar_watts: 3800, home_watts: 1120, grid_watts: 2680, grid_direction: 'export', battery_pct: 73, history: history}, weather: {source: 'BOM', station: 'Example station', forecast_area: 'Example region', station_distance_km: 20, fetched_at: now, timezone: 'UTC', condition_label: 'Partly cloudy.', current: {time: now, temperature_2m: 23.7, apparent_temperature: 23, wind_speed_10m: 14, relative_humidity_2m: 54}, daily: [0, 1, 2, 3].map(function (d) { return {time: now + d * 86400, temperature_2m_min: 13 + d, temperature_2m_max: 24 + d, precis: ['Partly cloudy.', 'Mostly sunny.', 'Shower or two.', 'Sunny.'][d], rain_probability: ['10%', '5%', '60%', '5%'][d]}; })}, air: {us_aqi: 28, pm2_5: 5, fetched_at: now, time: now}, uv: {uv_index: 3.4, daily_max: 5.8, fetched_at: now}, errors: {}};
+    var demoHours = [], end = Math.floor(now/3600)*3600 + 3600;
+    for (var h=0; h<24; h++) { var wet = h >= 4 && h <= 9; demoHours.push({start_time: end+h*3600-3600, end_time: end+h*3600, temperature_2m: 19+Math.sin(h/5)*5, weather_code: wet ? 80 : 2, precipitation_probability: wet ? 75 : 10, precipitation: wet ? 1.2 : 0, wind_speed_10m: 14+h%5}); }
+    return {hourly_forecast: {source: 'Open-Meteo', fetched_at: now, timezone: 'UTC', hours: demoHours}, generated_at: now, energy: {available: true, online: true, alarm: false, stale: false, received_at: now, solar_watts: 3800, home_watts: 1120, grid_watts: 2680, grid_direction: 'export', battery_pct: 73, history: history}, weather: {source: 'BOM', station: 'Example station', forecast_area: 'Example region', station_distance_km: 20, fetched_at: now, timezone: 'UTC', condition_label: 'Partly cloudy.', current: {time: now, temperature_2m: 23.7, apparent_temperature: 23, wind_speed_10m: 14, relative_humidity_2m: 54}, daily: [0, 1, 2, 3].map(function (d) { return {time: now + d * 86400, temperature_2m_min: 13 + d, temperature_2m_max: 24 + d, precis: ['Partly cloudy.', 'Mostly sunny.', 'Shower or two.', 'Sunny.'][d], rain_probability: ['10%', '5%', '60%', '5%'][d]}; })}, air: {us_aqi: 28, pm2_5: 5, fetched_at: now, time: now}, uv: {uv_index: 3.4, daily_max: 5.8, fetched_at: now}, errors: {}};
   }
   function chart(id, rows) {
     var holder = $(id), width = 620, height = id === 'large-chart' ? 300 : 135, pad = 24;
@@ -45,6 +49,7 @@
   }
   function render(data, serviceOffline) {
     state = data;
+    serviceDisconnected = !!serviceOffline;
     var w = data.weather || {}, c = w.current || {}, air = data.air || {}, uv = data.uv || {}, e = data.energy || {}, errors = data.errors || {};
     timezone = w.timezone && w.timezone !== 'auto' ? w.timezone : 'UTC';
     text('temperature', value(c.temperature_2m)); text('condition', w.condition_label || 'Waiting for BOM weather');
@@ -84,7 +89,61 @@
     text('solar-note', e.available ? 'Last reading received ' + age(e.received_at) : 'Waiting for a reading from Eveready.');
     chart('mini-chart', e.history); chart('large-chart', e.history);
     text('history-note', (e.history || []).length + ' readings collected · gaps remain visible');
+    renderHourly(data, serviceOffline);
     updateClock();
+  }
+  function hourLabel(code) {
+    if (code === 0 || code === 1) return 'Mostly clear';
+    if (code === 2) return 'Partly cloudy'; if (code === 3) return 'Overcast';
+    if (code === 45 || code === 48) return 'Fog';
+    if ([51,53,55,56,57].indexOf(code) !== -1) return 'Drizzle';
+    if ([61,63,65,66,67].indexOf(code) !== -1) return 'Rain';
+    if ([71,73,75,77,85,86].indexOf(code) !== -1) return 'Snow';
+    if ([80,81,82].indexOf(code) !== -1) return 'Showers';
+    if ([95,96,99].indexOf(code) !== -1) return 'Thunderstorms';
+    return 'Condition unavailable';
+  }
+  function hourTime(stamp, zone, weekday) {
+    var options = {hour: 'numeric', minute: '2-digit', timeZone: zone || timezone};
+    if (weekday) options.weekday = 'short';
+    try { return new Intl.DateTimeFormat('en-AU', options).format(new Date(stamp * 1000)); }
+    catch (_) { return new Date(stamp * 1000).toISOString().slice(11,16) + ' UTC'; }
+  }
+  function hourInterval(row, zone) { return hourTime(row.start_time, zone, true) + ' – ' + hourTime(row.end_time, zone, false); }
+  function renderHourly(data, serviceOffline) {
+    var forecast = data.hourly_forecast || {}, now = Date.now()/1000;
+    var hours = (forecast.hours || []).filter(function (row) {
+      return typeof row.start_time === 'number' && typeof row.end_time === 'number' &&
+        row.end_time > now && row.end_time <= now + 86400 && row.end_time - row.start_time === 3600;
+    }).sort(function (a,b) { return a.start_time - b.start_time; }).slice(0,24);
+    var old = serviceDisconnected || serviceOffline || !forecast.fetched_at || now - forecast.fetched_at > 7200 || forecast.fetched_at > now + 60 || (data.errors || {}).hourly_forecast;
+    text('hourly-source', 'Open-Meteo · ' + (demo ? 'DEMO FORECAST' : old ? 'CACHED / WAITING' : 'MODEL FORECAST'));
+    var known = hours.filter(function (row) { return typeof row.precipitation_probability === 'number' && row.precipitation_probability >= 0 && row.precipitation_probability <= 100; });
+    var peak = known.reduce(function (best,row) { return !best || row.precipitation_probability > best.precipitation_probability ? row : best; }, null);
+    text('rain-summary', old && !demo ? 'Hourly forecast is unavailable or old. Refresh it before making plans.' : peak ?
+      (known.length === hours.length ? 'Highest rain chance in this forecast: ' : 'Highest available rain chance: ') + value(peak.precipitation_probability) + '% during ' + hourInterval(peak, forecast.timezone) + '.' : 'Rain chances are not available yet.');
+    hourlyPage = Math.min(hourlyPage, Math.max(0, Math.ceil(hours.length/6)-1));
+    var start = hourlyPage * 6, page = hours.slice(start, start + 6), grid = $('hourly-grid');
+    grid.replaceChildren();
+    $('hourly-prev').disabled = hourlyPage === 0; $('hourly-next').disabled = start + 6 >= hours.length;
+    text('hourly-range', hours.length ? 'Hours ' + (start+1) + '–' + (start+page.length) + ' of ' + hours.length : 'No hours available');
+    if (!page.length) grid.innerHTML = '<p class="hourly-empty">Waiting for the hourly forecast from your PC service.</p>';
+    page.forEach(function (row) {
+      var card = document.createElement('article'); card.className = 'hour-card';
+      function line(tag, name, content) { var el = document.createElement(tag); el.className = name; el.textContent = content; card.appendChild(el); return el; }
+      line('h3', 'hour-time', hourInterval(row, forecast.timezone));
+      line('div', 'hour-temperature', value(row.temperature_2m) + '°');
+      line('p', 'hour-condition', hourLabel(row.weather_code));
+      var chance = typeof row.precipitation_probability === 'number' && row.precipitation_probability >= 0 && row.precipitation_probability <= 100 ? row.precipitation_probability : null;
+      line('p', 'hour-chance-label', 'Chance of rain');
+      line('strong', 'hour-chance', value(chance) + (chance === null ? '' : '%'));
+      var track = line('div', 'rain-track', ''); var fill = document.createElement('i'); fill.style.width = (chance || 0) + '%'; track.appendChild(fill);
+      line('p', 'hour-amount', typeof row.precipitation === 'number' && row.precipitation >= 0 ? row.precipitation.toFixed(1) + ' mm expected' : 'Amount unavailable');
+      line('p', 'hour-wind', typeof row.wind_speed_10m === 'number' && row.wind_speed_10m >= 0 ? 'Wind ' + value(row.wind_speed_10m) + ' km/h' : 'Wind unavailable');
+      grid.appendChild(card);
+    });
+    text('hourly-note', 'Open-Meteo hourly model forecast · ' + (forecast.fetched_at ? 'fetched ' + age(forecast.fetched_at) : 'waiting for PC service update') +
+      '. Rain chance includes rain, showers or snow. Amounts apply to the displayed hour; snow is expressed as water equivalent.');
   }
   function updateClock() { text('clock', formatTime(Date.now() / 1000, {hour: '2-digit', minute: '2-digit'})); }
   function banner(message) { var el = $('connection-banner'); el.hidden = false; el.firstChild.textContent = message + ' '; }
@@ -117,10 +176,14 @@
   }
   function startPoll() { if (poll) clearInterval(poll); refresh(); poll = setInterval(refresh, 30000); }
   function startDemo() { demo = true; text('mode', 'DEMO · SAMPLE DATA'); banner('Demo mode: all values are illustrative. Pair your private service for real readings.'); text('connection-label', 'Demo data · no location configured in this module'); $('connection-dot').classList.remove('connected'); closeSetup(); startPoll(); }
-  function switchView(name) { view = name; $('overview').hidden = name !== 'overview'; $('energy').hidden = name !== 'energy'; document.querySelectorAll('[data-view]').forEach(function (b) { b.classList.toggle('selected', b.dataset.view === name); }); if (state) chart('large-chart', state.energy && state.energy.history); }
+  function switchView(name) { view = name; $('overview').hidden = name !== 'overview'; $('energy').hidden = name !== 'energy'; $('hourly').hidden = name !== 'hourly'; document.querySelectorAll('[data-view]').forEach(function (b) { b.classList.toggle('selected', b.dataset.view === name); }); if (state) chart('large-chart', state.energy && state.energy.history); }
   $('settings').onclick = openSetup; $('setup-shortcut').onclick = openSetup; $('close-settings').onclick = closeSetup;
   $('refresh').onclick = refresh; $('demo-button').onclick = startDemo; $('demo-shortcut').onclick = startDemo;
   $('overview-tab').onclick = function () { switchView('overview'); }; $('energy-tab').onclick = function () { switchView('energy'); };
+  $('hourly-tab').onclick = function () { switchView('hourly'); };
+  $('hourly-open').onclick = function () { hourlyPage = 0; if (state) renderHourly(state); switchView('hourly'); $('hourly-tab').focus(); };
+  $('hourly-prev').onclick = function () { hourlyPage = Math.max(0,hourlyPage-1); if (state) renderHourly(state); if ($('hourly-prev').disabled) $('hourly-next').focus(); };
+  $('hourly-next').onclick = function () { hourlyPage++; if (state) renderHourly(state); if ($('hourly-next').disabled) $('hourly-prev').focus(); };
   $('energy-explain').onclick = function () { switchView('energy'); $('energy-tab').focus(); };
   $('disconnect').onclick = function () {
     $('disconnect').disabled = true;

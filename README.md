@@ -49,6 +49,27 @@ background; the PC does the collection independently of the TV.
 
 ## What the numbers mean
 
+### Hour by hour weather
+
+Choose **Hour by hour →** on the weather card, or the **Hourly** tab. The next
+24 hours appear in six-hour pages, with temperature, conditions, rain chance,
+expected precipitation in mm and wind. Use **Previous / Next 6 hours** with the
+remote, and Back to return to Overview. A summary identifies the highest rain
+chance in the available forecast; it does not promise exactly when rain starts.
+
+Hourly data is a separately labelled **Open-Meteo model forecast**. BOM still
+supplies the overview's observations and daily forecast. The private PC service
+fetches the hourly forecast alongside UV every 15 minutes using the location
+already configured privately. No location is included in this repository.
+
+Each interval is labelled with its start and end in local time. Rain chance and
+amount apply to that interval; temperature and wind are forecast at its end.
+Chance includes rain, showers or snow; precipitation amounts use water equivalent.
+Unavailable values remain blank rather than becoming zero. Cached or failed
+forecasts are labelled and do not give a current rain-planning summary.
+
+### Household energy
+
 The overview leads with a household explanation such as **Power to spare**,
 **Solar is helping**, or **Waiting for a fresh reading**. Spare-power suggestions
 require a recent, online, alarm-free reading, confirmed export direction, and

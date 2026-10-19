@@ -9,7 +9,7 @@ It requires a private Daylight service running on your home computer.
 In TizenBrew, add a **GitHub module** and enter:
 
 ```text
-kynomatix/daylight-tizenbrew@v0.3.3
+kynomatix/daylight-tizenbrew@v0.4.0
 ```
 
 Repository: https://github.com/kynomatix/daylight-tizenbrew
@@ -17,7 +17,7 @@ Repository: https://github.com/kynomatix/daylight-tizenbrew
 The versioned entry avoids stale files from the unversioned download cache.
 When updating from the old entry, replace that module entry and restart
 TizenBrew. The TV's saved Daylight connection is shared across module versions.
-The cog opens **Settings**, which shows **Daylight 0.3.3**, read from the running dashboard code.
+The cog opens **Settings**, which shows **Daylight 0.4.0**, read from the running dashboard code.
 Use that to identify this build, separately from TizenBrew's own 2.x version
 or a cached version on its module tile. Module updates require no Developer
 Mode Host PC IP change; they are downloaded through TizenBrew.
@@ -51,7 +51,7 @@ the service port to the internet. Network/firewall access may need configuration
 on the PC; this project does not change firewall rules automatically.
 
 Use arrows and Enter to navigate. In a text field, Up/Down moves between controls;
-Left/Right edits text. Back closes Settings, or returns from Hourly/Energy to
+Left/Right edits text. Back closes Settings, or returns from Hourly/Energy/Clouds & rain to
 Overview. Back on Overview opens **Leave Daylight?**, with **Stay here** focused
 by default. Confirm to return to the existing TizenBrew menu; **Exit Daylight**
 in Settings opens the same prompt. Leaving does not forget pairing or stop PC
@@ -130,3 +130,31 @@ https://open-meteo.com/en/docs/air-quality-api
 This is a personal home dashboard. Check the provider terms before commercial
 redistribution or offering a hosted service. The app is not an official BOM,
 Open-Meteo, Samsung or Eveready product.
+
+## Clouds & rain (0.4.0)
+
+Choose **Clouds & rain** for a satellite cloud loop or observed BOM rain radar.
+Use **Earlier**, **Later** and **Play / Pause** with the remote. The selected
+image time follows a marker on the solar/home chart for the same period. A solar
+value is shown only when a recorded sample is within three minutes of the image.
+Images and solar readings have different observation times and resolutions; this
+comparison does not establish the cause of a production dip.
+
+The cloud view offers an approximate regional crop and a wider context view.
+Rain radar detects precipitation, not every cloud. Satellite cloud detail is less
+useful at night. Failed or older imagery is labelled; old loops cannot autoplay.
+These are observed frames, not a predicted future path. The hourly model forecast
+remains available through the screen's forecast button.
+
+The PC downloads imagery from BOM's documented anonymous FTP service, caches it
+privately, and resizes cloud images before the TV decodes them. Images require the
+existing paired-display Bearer token; no token is put in image URLs. Location,
+product selection and regional crop are configured only on the private PC.
+No BOM imagery, household settings or location data is included in this repository.
+
+This integration is for a personal household display. BOM's public FTP terms
+permit personal/internal use but restrict onward supply and commercial use.
+Publishing generic display code does not grant permission to redistribute BOM
+images. Review terms for your own use:
+https://www.bom.gov.au/catalogue/anon-ftp.shtml
+https://www.bom.gov.au/copyright

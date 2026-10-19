@@ -1,13 +1,15 @@
 /* Generic display code. No household location, account, server or token belongs here. */
 (function () {
   'use strict';
-  var APP_VERSION = '0.3.3';
+  var APP_VERSION = '0.4.0';
   var $ = function (id) { return document.getElementById(id); };
   if ($('build-version')) $('build-version').textContent = 'Daylight ' + APP_VERSION;
   var state = null, demo = false, poll = null, view = 'overview', connection = null, connectionNotice = '';
   var hourlyPage = 0;
   var serviceDisconnected = false;
   var smoothCharts = true;
+  var skyLayer = 'clouds', skyIndex = -1, skyPlaying = false, skyWide = false, skySignature = '', skyGeneration = 0;
+  var skyAssets = {}, skyReadyTime = null, skyLoading = false;
   var isTizenBrew = location.origin === 'http://127.0.0.1:8081' && /^\/module\//.test(location.pathname || '');
   var browserStorage = null;
   try { browserStorage = window.localStorage; } catch (_) {}
@@ -32,12 +34,12 @@
     for (var h=0; h<24; h++) { var wet = h >= 4 && h <= 9; demoHours.push({start_time: end+h*3600-3600, end_time: end+h*3600, temperature_2m: 19+Math.sin(h/5)*5, weather_code: wet ? 80 : 2, precipitation_probability: wet ? 75 : 10, precipitation: wet ? 1.2 : 0, wind_speed_10m: 14+h%5}); }
     return {hourly_forecast: {source: 'Open-Meteo', fetched_at: now, timezone: 'UTC', hours: demoHours}, generated_at: now, energy: {available: true, online: true, alarm: false, stale: false, received_at: now, solar_watts: 3800, home_watts: 1120, grid_watts: 2680, grid_direction: 'export', battery_pct: 73, history: history}, weather: {source: 'BOM', station: 'Example station', forecast_area: 'Example region', station_distance_km: 20, fetched_at: now, timezone: 'UTC', condition_label: 'Partly cloudy.', current: {time: now, temperature_2m: 23.7, apparent_temperature: 23, wind_speed_10m: 14, relative_humidity_2m: 54}, daily: [0, 1, 2, 3].map(function (d) { return {time: now + d * 86400, temperature_2m_min: 13 + d, temperature_2m_max: 24 + d, precis: ['Partly cloudy.', 'Mostly sunny.', 'Shower or two.', 'Sunny.'][d], rain_probability: ['10%', '5%', '60%', '5%'][d]}; })}, air: {us_aqi: 28, pm2_5: 5, fetched_at: now, time: now}, uv: {uv_index: 3.4, daily_max: 5.8, fetched_at: now}, errors: {}};
   }
-  function chart(id, rows) {
+  function chart(id, rows, marker, bounds) {
     var holder = $(id), width = 620, height = id === 'large-chart' ? 300 : 135, pad = 24;
     var prepared = window.DaylightChart.prepare(rows, smoothCharts);
     rows = prepared.rows;
     if (rows.length < 2) { holder.innerHTML = '<div class="chart-empty">History is gathering.<br>At least two distinct readings are needed.</div>'; return; }
-    var first = rows[0].time, last = rows[rows.length - 1].time, span = Math.max(60, last - first);
+    var first = bounds ? bounds[0] : rows[0].time, last = bounds ? bounds[1] : rows[rows.length - 1].time, span = Math.max(60, last - first);
     var max = Math.max.apply(null, rows.map(function (r) { return Math.max(r.solar_watts, r.home_watts); }).concat([1000]));
     var x = function (t) { return pad + (t - first) / span * (width - pad * 2); };
     var y = function (v) { return height - pad - v / max * (height - pad * 2); };
@@ -55,6 +57,7 @@
         });
       });
     });
+    if (typeof marker === 'number' && marker >= first && marker <= last) svg += '<path d="M'+x(marker)+' 6V'+(height-pad)+'" stroke="#e4b569" stroke-width="1.5" stroke-dasharray="4 4"/>';
     svg += '<text x="24" y="' + (height - 3) + '">' + formatTime(first, {hour: '2-digit', minute: '2-digit'}) + '</text><text x="596" text-anchor="end" y="' + (height - 3) + '">' + formatTime(last, {hour: '2-digit', minute: '2-digit'}) + '</text></svg>';
     holder.innerHTML = svg;
   }
@@ -103,6 +106,7 @@
     text('large-history-note', (smoothCharts ? 'Five-minute smoothed trends. Short gaps are interpolated with dotted joins; gaps over 15 minutes remain visible.' : 'Original recorded values. Gaps over three minutes remain visible.') + ' Plotted by first receipt time; this is not a daily energy total.');
     ['chart-style','chart-style-large'].forEach(function (id) { text(id,smoothCharts ? 'View raw readings' : 'View smoothed trend'); });
     renderHourly(data, serviceOffline);
+    if (view === 'sky') renderSky();
     updateClock();
   }
   function hourLabel(code) {
@@ -180,7 +184,7 @@
   }
   function closeExit() {
     if (typeof $('exit-dialog').close === 'function') $('exit-dialog').close(); else $('exit-dialog').removeAttribute('open');
-    $(view === 'hourly' ? 'hourly-tab' : view === 'energy' ? 'energy-tab' : 'overview-tab').focus();
+    $(view + '-tab').focus();
   }
   function leaveDashboard() {
     // TizenBrew opens app modules using location.href, so Back returns to its
@@ -212,8 +216,74 @@
     });
   }
   function startPoll() { if (poll) clearInterval(poll); refresh(); poll = setInterval(refresh, 30000); }
-  function startDemo() { demo = true; text('mode', 'DEMO · SAMPLE DATA'); banner('Demo mode: all values are illustrative. Pair your private service for real readings.'); text('connection-label', 'Demo data · no location configured in this module'); $('connection-dot').classList.remove('connected'); closeSetup(); startPoll(); }
-  function switchView(name) { view = name; $('overview').hidden = name !== 'overview'; $('energy').hidden = name !== 'energy'; $('hourly').hidden = name !== 'hourly'; document.querySelectorAll('[data-view]').forEach(function (b) { b.classList.toggle('selected', b.dataset.view === name); }); if (state) chart('large-chart', state.energy && state.energy.history); }
+  function startDemo() { clearSkyAssets(); demo = true; text('mode', 'DEMO · SAMPLE DATA'); banner('Demo mode: all values are illustrative. Pair your private service for real readings.'); text('connection-label', 'Demo data · no location configured in this module'); $('connection-dot').classList.remove('connected'); closeSetup(); startPoll(); }
+  function switchView(name) { view = name; ['overview','energy','hourly','sky'].forEach(function (id) { $(id).hidden = name !== id; }); document.querySelectorAll('[data-view]').forEach(function (b) { b.classList.toggle('selected', b.dataset.view === name); }); if (name !== 'sky') { skyPlaying = false; skyGeneration++; } if (state) chart('large-chart', state.energy && state.energy.history); if (name === 'sky') renderSky(); }
+  function skyData() { return state && state.imagery && state.imagery.layers && state.imagery.layers[skyLayer] || {}; }
+  function stopSky() { skyPlaying = false; text('sky-play','Play'); }
+  function clearSkyAssets() { skyGeneration++; Object.keys(skyAssets).forEach(function (k) { skyAssets[k].then(function (url) { URL.revokeObjectURL(url); }).catch(function () {}); }); skyAssets = {}; skySignature = ''; stopSky(); }
+  function skyAsset(key) {
+    if (!connection || !/^[a-f0-9]{64}$/.test(key || '')) return Promise.reject(new Error('Image unavailable'));
+    if (!skyAssets[key]) {
+      var controller = new AbortController(), timer = setTimeout(function () { controller.abort(); },12000);
+      skyAssets[key] = fetch(connection.url+'/api/imagery/'+key,{headers:{Authorization:'Bearer '+connection.token},signal:controller.signal,cache:'no-store'}).then(function (r) {
+        if (!r.ok) throw new Error('Image unavailable'); return r.blob();
+      }).then(function (blob) { return URL.createObjectURL(blob); }).catch(function (error) { delete skyAssets[key]; throw error; }).finally(function () { clearTimeout(timer); });
+    }
+    return skyAssets[key];
+  }
+  function renderSky() {
+    if (view !== 'sky') return;
+    var data = skyData(), frames = data.frames || [], signature = skyLayer+frames.map(function (f) { return f.asset; }).join('');
+    if (signature !== skySignature) {
+      // Old object URLs must not grow without bound as the PC rotates frames.
+      clearSkyAssets(); skySignature = signature; skyIndex = frames.length-1; skyReadyTime = null;
+    }
+    ['clouds','rain'].forEach(function (id) { $('sky-'+id).classList.toggle('selected',skyLayer === id); });
+    var latest = frames.length ? frames[frames.length-1].time : 0;
+    var failed = state && state.imagery && state.imagery.errors && state.imagery.errors[skyLayer];
+    var stale = !latest || Date.now()/1000-latest > (skyLayer === 'rain' ? 1200 : 2700) || latest > Date.now()/1000+60 || serviceDisconnected || failed;
+    text('sky-status',demo ? 'DEMO · NO LIVE IMAGERY' : !latest ? 'WAITING FOR BOM' : stale ? 'OLDER / CACHED IMAGES' : 'BOM · OBSERVED');
+    text('sky-description',skyLayer === 'rain' ? 'Radar shows rain, hail or snow echoes, not all cloud. It can miss light rain or show echoes that never reach the ground.' : 'Satellite imagery shows cloud patterns over a broader area. The regional view is approximate, not a measurement of sunlight at your roof.');
+    text('sky-note',(failed ? failed+' ' : '')+'Observed movement only · no predicted path. '+(skyLayer === 'rain' ? 'Colours show radar echo intensity; the scale runs from light to intense.' : 'Visible cloud detail is less useful at night.'));
+    $('sky-extent').hidden = skyLayer !== 'clouds'; text('sky-extent',skyWide ? 'Regional view' : 'Wider view');
+    $('sky-prev').disabled = frames.length < 2 || skyIndex <= 0; $('sky-next').disabled = frames.length < 2 || skyIndex >= frames.length-1;
+    $('sky-play').disabled = frames.length < 2 || !!stale; if (stale) stopSky(); text('sky-play',skyPlaying ? 'Pause' : 'Play');
+    if (!frames.length || demo) {
+      $('sky-images').hidden = true; $('sky-legend').hidden = true; $('sky-legend-box').hidden = true; $('sky-empty').hidden = false;
+      text('sky-empty',demo ? 'Demo preview · connect your home service for real cloud and radar images.' : 'BOM images are gathering on your computer. They appear here when ready.');
+      text('sky-time','No image available'); text('sky-solar','—'); text('sky-solar-time','Waiting for matching history');
+      chart('sky-chart',[]); return;
+    }
+    skyIndex = Math.max(0,Math.min(frames.length-1,skyIndex));
+    var frame = frames[skyIndex], generation = ++skyGeneration; skyLoading = true;
+    if (skyReadyTime !== frame.time) { $('sky-empty').hidden = false; text('sky-empty','Loading observed image…'); }
+    var keys = [frame.asset,data.background,data.locations,data.legend];
+    Promise.all(keys.map(function (key) { return key ? skyAsset(key) : Promise.resolve(null); })).then(function (urls) {
+      if (generation !== skyGeneration || view !== 'sky') return;
+      ['sky-frame','sky-background','sky-locations','sky-legend'].forEach(function (id,i) { $(id).hidden = !urls[i]; if (urls[i]) $(id).src = urls[i]; });
+      $('sky-legend-box').hidden = !urls[3];
+      $('sky-frame').alt = skyLayer === 'rain' ? 'Observed BOM rain radar' : 'Observed BOM satellite cloud image';
+      var viewport = data.viewport || {}, zoom = skyLayer === 'clouds' && !skyWide ? Math.max(1,Math.min(5,Number(viewport.zoom)||1)) : 1;
+      var xx = Math.max(0,Math.min(1,Number(viewport.x)||0)), yy = Math.max(0,Math.min(1,Number(viewport.y)||0));
+      $('sky-images').style.transformOrigin = '50% 50%'; $('sky-images').style.transform = zoom > 1 ? 'translate('+((.5-xx)*zoom*100)+'%,'+((.5-yy)*zoom*100)+'%) scale('+zoom+')' : 'none';
+      $('sky-map').setAttribute('data-layer',skyLayer); $('sky-images').hidden = false; $('sky-empty').hidden = true; skyReadyTime = frame.time;
+      text('sky-time',formatTime(frame.time,{hour:'2-digit',minute:'2-digit'})+' · '+(skyIndex+1)+' / '+frames.length+' · '+age(frame.time)+(stale ? ' · OLD / CACHED' : ' · observed'));
+      var first = frames[0].time, last = Math.max(first+60,latest), rows = state.energy && state.energy.history || [];
+      rows = rows.filter(function (r) { return r.time >= first && r.time <= last; });
+      var nearest = rows.reduce(function (best,r) { return !best || Math.abs(r.time-frame.time)<Math.abs(best.time-frame.time) ? r : best; },null);
+      var matched = nearest && Math.abs(nearest.time-frame.time) <= 180;
+      text('sky-solar',matched ? value(nearest.solar_watts/1000,2)+' kW' : '—');
+      text('sky-solar-time',matched ? 'Recorded '+formatTime(nearest.time,{hour:'2-digit',minute:'2-digit'})+' · within 3 minutes of image' : 'No recorded solar reading within 3 minutes of this image');
+      chart('sky-chart',rows,frame.time,[first,last]);
+    }).catch(function () { if (generation !== skyGeneration) return; stopSky(); $('sky-images').hidden = true; $('sky-legend').hidden = true; $('sky-legend-box').hidden = true; $('sky-empty').hidden = false; text('sky-empty','Image unavailable. Try Refresh or check the PC service.'); text('sky-time','Image unavailable'); text('sky-solar','—'); text('sky-solar-time','Image unavailable'); skyReadyTime = null; }).finally(function () { if (generation === skyGeneration) skyLoading = false; });
+  }
+  $('sky-tab').onclick = function () { switchView('sky'); };
+  ['clouds','rain'].forEach(function (layer) { $('sky-'+layer).onclick = function () { stopSky(); skyLayer = layer; skySignature = ''; renderSky(); }; });
+  $('sky-prev').onclick = function () { stopSky(); skyIndex--; renderSky(); }; $('sky-next').onclick = function () { stopSky(); skyIndex++; renderSky(); };
+  $('sky-play').onclick = function () { skyPlaying = !skyPlaying; text('sky-play',skyPlaying ? 'Pause' : 'Play'); };
+  $('sky-extent').onclick = function () { skyWide = !skyWide; renderSky(); };
+  $('sky-hourly').onclick = function () { switchView('hourly'); $('hourly-tab').focus(); };
+  setInterval(function () { if (view === 'sky' && skyPlaying && !skyLoading && !document.hidden && !$('setup-dialog').hasAttribute('open') && !$('exit-dialog').hasAttribute('open')) { var frames = skyData().frames || []; if (frames.length > 1) { skyIndex = (skyIndex+1)%frames.length; renderSky(); } } },1400);
   $('settings').onclick = openSetup; $('setup-shortcut').onclick = openSetup; $('close-settings').onclick = closeSetup;
   $('settings-exit').onclick = openExit; $('exit-cancel').onclick = closeExit; $('exit-confirm').onclick = leaveDashboard;
   $('setup-dialog').addEventListener('cancel',function (event) { event.preventDefault(); closeSetup(); });
@@ -230,7 +300,7 @@
   $('disconnect').onclick = function () {
     $('disconnect').disabled = true;
     connectionStore.forget().then(function () {
-      connection = null; connectionNotice = ''; demo = false; state = null; render({}); text('mode', 'NOT CONNECTED');
+      clearSkyAssets(); connection = null; connectionNotice = ''; demo = false; state = null; render({}); text('mode', 'NOT CONNECTED');
       $('connection-dot').classList.remove('connected'); text('connection-label', 'Waiting for your private service');
       text('pair-message', 'This display has forgotten its connection.'); banner('Display disconnected. Pair again when ready.');
     }).catch(function () { text('pair-message', 'Could not remove the saved TV pairing. Restart TizenBrew and try Forget display again.');

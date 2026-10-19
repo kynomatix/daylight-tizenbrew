@@ -1,7 +1,7 @@
 /* Generic display code. No household location, account, server or token belongs here. */
 (function () {
   'use strict';
-  var APP_VERSION = '0.5.0';
+  var APP_VERSION = '0.5.1';
   var $ = function (id) { return document.getElementById(id); };
   if ($('build-version')) $('build-version').textContent = 'Daylight ' + APP_VERSION;
   var state = null, demo = false, poll = null, view = 'overview', connection = null, connectionNotice = '';
@@ -10,6 +10,7 @@
   var smoothCharts = true;
   var skyLayer = 'clouds', skyIndex = -1, skyPlaying = false, skyWide = false, skySignature = '', skyGeneration = 0;
   var skyAssets = {}, skyReadyTime = null, skyLoading = false;
+  var skyWantsPlay = {rain:true,clouds:false}, skyNextFrameAt = 0;
   var isTizenBrew = location.origin === 'http://127.0.0.1:8081' && /^\/module\//.test(location.pathname || '');
   var browserStorage = null;
   try { browserStorage = window.localStorage; } catch (_) {}
@@ -217,7 +218,7 @@
   }
   function startPoll() { if (poll) clearInterval(poll); refresh(); poll = setInterval(refresh, 30000); }
   function startDemo() { clearSkyAssets(); demo = true; text('mode', 'DEMO · SAMPLE DATA'); banner('Demo mode: all values are illustrative. Pair your private service for real readings.'); text('connection-label', 'Demo data · no location configured in this module'); $('connection-dot').classList.remove('connected'); closeSetup(); startPoll(); }
-  function switchView(name) { view = name; ['overview','energy','hourly','sky'].forEach(function (id) { $(id).hidden = name !== id; }); document.querySelectorAll('[data-view]').forEach(function (b) { b.classList.toggle('selected', b.dataset.view === name); }); if (name !== 'sky') { skyPlaying = false; skyGeneration++; } if (state) chart('large-chart', state.energy && state.energy.history); if (name === 'sky') renderSky(); }
+  function switchView(name) { view = name; ['overview','energy','hourly','sky'].forEach(function (id) { $(id).hidden = name !== id; }); document.querySelectorAll('[data-view]').forEach(function (b) { b.classList.toggle('selected', b.dataset.view === name); }); if (name !== 'sky') { skyPlaying = false; skyGeneration++; } else skyPlaying = skyWantsPlay[skyLayer]; if (state) chart('large-chart', state.energy && state.energy.history); if (name === 'sky') renderSky(); }
   function skyData() { return state && state.imagery && state.imagery.layers && state.imagery.layers[skyLayer] || {}; }
   function stopSky() { skyPlaying = false; text('sky-play','Play'); }
   function positionSkyMarker(marker, zoom, focusX, focusY, customMap) {
@@ -255,10 +256,11 @@
     if (view !== 'sky') return;
     var data = skyData(), frames = data.frames || [], signature = skyLayer+frames.map(function (f) { return f.asset; }).join('');
     $('sky-marker').hidden = true;
+    $('sky-moment').hidden = true; $('sky-timeline').hidden = true;
     $('radar-map').hidden = true; $('rain-key').hidden = true;
     if (signature !== skySignature) {
       // Old object URLs must not grow without bound as the PC rotates frames.
-      clearSkyAssets(); skySignature = signature; skyIndex = frames.length-1; skyReadyTime = null;
+      clearSkyAssets(); skySignature = signature; skyIndex = frames.length-1; skyReadyTime = null; skyPlaying = skyWantsPlay[skyLayer];
     }
     ['clouds','rain'].forEach(function (id) { $('sky-'+id).classList.toggle('selected',skyLayer === id); });
     var latest = frames.length ? frames[frames.length-1].time : 0;
@@ -271,6 +273,7 @@
     text('sky-credit',skyLayer === 'rain' && data.map ? 'Rain: © Bureau of Meteorology · Map: Natural Earth · Places: GeoNames (CC BY 4.0)' : '© Commonwealth of Australia, Bureau of Meteorology · Personal home display');
     $('sky-prev').disabled = frames.length < 2 || skyIndex <= 0; $('sky-next').disabled = frames.length < 2 || skyIndex >= frames.length-1;
     $('sky-play').disabled = frames.length < 2 || !!stale; if (stale) stopSky(); text('sky-play',skyPlaying ? 'Pause' : 'Play');
+    $('sky-latest').disabled = !frames.length || skyIndex === frames.length-1;
     if (!frames.length || demo) {
       $('sky-images').hidden = true; $('sky-legend').hidden = true; $('sky-legend-box').hidden = true; $('sky-empty').hidden = false;
       text('sky-empty',demo ? 'Demo preview · connect your home service for real cloud and radar images.' : 'BOM images are gathering on your computer. They appear here when ready.');
@@ -298,7 +301,17 @@
         $('radar-map').hidden=false; $('sky-images').hidden=true; $('sky-legend-box').hidden=true; $('rain-key').hidden=false;
       }
       positionSkyMarker(data.marker,zoom,xx,yy,customMap);
-      text('sky-time',formatTime(frame.time,{hour:'2-digit',minute:'2-digit'})+' · '+(skyIndex+1)+' / '+frames.length+' · '+age(frame.time)+(stale ? ' · OLD / CACHED' : ' · observed'));
+      var isLatest=skyIndex === frames.length-1;
+      $('sky-moment').hidden=false; $('sky-timeline').hidden=false;
+      $('sky-moment').setAttribute('data-latest',String(isLatest));
+      text('sky-frame-kind',isLatest ? (stale ? 'LATEST SAVED' : 'LATEST SCAN') : 'PAST FRAME');
+      text('sky-frame-stamp',formatTime(frame.time,{hour:'2-digit',minute:'2-digit'})+' · '+age(frame.time));
+      text('sky-now-stamp','NOW '+formatTime(Date.now()/1000,{hour:'2-digit',minute:'2-digit'}));
+      text('sky-first-time',formatTime(frames[0].time,{hour:'2-digit',minute:'2-digit'}));
+      text('sky-latest-time','Latest '+formatTime(latest,{hour:'2-digit',minute:'2-digit'}));
+      $('sky-progress').style.left=(frames.length>1 ? skyIndex/(frames.length-1)*100 : 100)+'%';
+      text('sky-time',(skyPlaying ? 'Playing observed history' : 'Paused')+' · '+(skyIndex+1)+' / '+frames.length+' · latest scan '+age(latest)+(stale ? ' · OLD / CACHED' : ''));
+      skyNextFrameAt=Date.now()+(isLatest ? 3400 : 900);
       var first = frames[0].time, last = Math.max(first+60,latest), rows = state.energy && state.energy.history || [];
       rows = rows.filter(function (r) { return r.time >= first && r.time <= last; });
       var nearest = rows.reduce(function (best,r) { return !best || Math.abs(r.time-frame.time)<Math.abs(best.time-frame.time) ? r : best; },null);
@@ -310,12 +323,14 @@
   }
   $('sky-tab').onclick = function () { switchView('sky'); };
   ['clouds','rain'].forEach(function (layer) { $('sky-'+layer).onclick = function () { stopSky(); skyLayer = layer; skySignature = ''; renderSky(); }; });
-  $('sky-prev').onclick = function () { stopSky(); skyIndex--; renderSky(); }; $('sky-next').onclick = function () { stopSky(); skyIndex++; renderSky(); };
-  $('sky-play').onclick = function () { skyPlaying = !skyPlaying; text('sky-play',skyPlaying ? 'Pause' : 'Play'); };
+  function pauseSky() { skyWantsPlay[skyLayer]=false; stopSky(); }
+  $('sky-prev').onclick = function () { pauseSky(); skyIndex--; renderSky(); }; $('sky-next').onclick = function () { pauseSky(); skyIndex++; renderSky(); };
+  $('sky-latest').onclick = function () { pauseSky(); skyIndex=(skyData().frames || []).length-1; renderSky(); };
+  $('sky-play').onclick = function () { skyPlaying = !skyPlaying; skyWantsPlay[skyLayer]=skyPlaying; if (skyPlaying) skyNextFrameAt=Date.now()+900; renderSky(); };
   $('sky-extent').onclick = function () { skyWide = !skyWide; renderSky(); };
   $('sky-hourly').onclick = function () { switchView('hourly'); $('hourly-tab').focus(); };
   if (window.addEventListener) window.addEventListener('resize',function () { if (view === 'sky') renderSky(); });
-  setInterval(function () { if (view === 'sky' && skyPlaying && !skyLoading && !document.hidden && !$('setup-dialog').hasAttribute('open') && !$('exit-dialog').hasAttribute('open')) { var frames = skyData().frames || []; if (frames.length > 1) { skyIndex = (skyIndex+1)%frames.length; renderSky(); } } },1400);
+  setInterval(function () { if (view === 'sky' && skyPlaying && !skyLoading && Date.now()>=skyNextFrameAt && !document.hidden && !$('setup-dialog').hasAttribute('open') && !$('exit-dialog').hasAttribute('open')) { var frames = skyData().frames || []; if (frames.length > 1) { skyIndex = (skyIndex+1)%frames.length; renderSky(); } } },250);
   $('settings').onclick = openSetup; $('setup-shortcut').onclick = openSetup; $('close-settings').onclick = closeSetup;
   $('settings-exit').onclick = openExit; $('exit-cancel').onclick = closeExit; $('exit-confirm').onclick = leaveDashboard;
   $('setup-dialog').addEventListener('cancel',function (event) { event.preventDefault(); closeSetup(); });

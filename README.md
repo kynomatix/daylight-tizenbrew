@@ -9,7 +9,7 @@ It requires a private Daylight service running on your home computer.
 In TizenBrew, add a **GitHub module** and enter:
 
 ```text
-kynomatix/daylight-tizenbrew@v0.5.0
+kynomatix/daylight-tizenbrew@v0.5.1
 ```
 
 Repository: https://github.com/kynomatix/daylight-tizenbrew
@@ -17,7 +17,7 @@ Repository: https://github.com/kynomatix/daylight-tizenbrew
 The versioned entry avoids stale files from the unversioned download cache.
 When updating from the old entry, replace that module entry and restart
 TizenBrew. The TV's saved Daylight connection is shared across module versions.
-The cog opens **Settings**, which shows **Daylight 0.5.0**, read from the running dashboard code.
+The cog opens **Settings**, which shows **Daylight 0.5.1**, read from the running dashboard code.
 Use that to identify this build, separately from TizenBrew's own 2.x version
 or a cached version on its module tile. Module updates require no Developer
 Mode Host PC IP change; they are downloaded through TizenBrew.
@@ -131,7 +131,7 @@ This is a personal home dashboard. Check the provider terms before commercial
 redistribution or offering a hosted service. The app is not an official BOM,
 Open-Meteo, Samsung or Eveready product.
 
-## Clouds & rain (0.5.0)
+## Clouds & rain (0.5.1)
 
 Choose **Clouds & rain** for a satellite cloud loop or observed BOM rain radar.
 Use **Earlier**, **Later** and **Play / Pause** with the remote. The selected
@@ -160,7 +160,7 @@ https://www.bom.gov.au/catalogue/anon-ftp.shtml
 https://www.bom.gov.au/copyright
 
 
-### Approximate area marker (0.5.0)
+### Approximate area marker (0.4.1)
 
 Both maps can show a fixed-size **Your area · Approximate** marker. Its position
 comes only from private PC settings, and follows the image when changing between
@@ -199,3 +199,13 @@ cannot change TizenBrew's installed manifest. No software pointer workaround is
 claimed. Native pointer support requires a TizenBrew package built with
 `pointing-device-support="enable"`, then verification on the user's TV.
 https://developer.samsung.com/smarttv/develop/guides/user-interaction/mouse.html
+
+
+### Rain playback (0.5.1)
+
+Fresh rain radar autoplays observed history. Playback pauses longer on the latest
+scan, with a clear LATEST SCAN badge, image time and age, a separate NOW clock,
+and a timeline from oldest to newest. Earlier images are labelled PAST FRAME.
+Latest scan jumps to the newest image and pauses. Manual Pause stays paused
+when readings refresh; stale or offline imagery never starts autoplay. These
+are past observations, not a predicted path.

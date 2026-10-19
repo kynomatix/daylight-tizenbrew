@@ -9,7 +9,7 @@ It requires a private Daylight service running on your home computer.
 In TizenBrew, add a **GitHub module** and enter:
 
 ```text
-kynomatix/daylight-tizenbrew@v0.4.0
+kynomatix/daylight-tizenbrew@v0.4.1
 ```
 
 Repository: https://github.com/kynomatix/daylight-tizenbrew
@@ -17,7 +17,7 @@ Repository: https://github.com/kynomatix/daylight-tizenbrew
 The versioned entry avoids stale files from the unversioned download cache.
 When updating from the old entry, replace that module entry and restart
 TizenBrew. The TV's saved Daylight connection is shared across module versions.
-The cog opens **Settings**, which shows **Daylight 0.4.0**, read from the running dashboard code.
+The cog opens **Settings**, which shows **Daylight 0.4.1**, read from the running dashboard code.
 Use that to identify this build, separately from TizenBrew's own 2.x version
 or a cached version on its module tile. Module updates require no Developer
 Mode Host PC IP change; they are downloaded through TizenBrew.
@@ -131,7 +131,7 @@ This is a personal home dashboard. Check the provider terms before commercial
 redistribution or offering a hosted service. The app is not an official BOM,
 Open-Meteo, Samsung or Eveready product.
 
-## Clouds & rain (0.4.0)
+## Clouds & rain (0.4.1)
 
 Choose **Clouds & rain** for a satellite cloud loop or observed BOM rain radar.
 Use **Earlier**, **Later** and **Play / Pause** with the remote. The selected
@@ -158,3 +158,14 @@ Publishing generic display code does not grant permission to redistribute BOM
 images. Review terms for your own use:
 https://www.bom.gov.au/catalogue/anon-ftp.shtml
 https://www.bom.gov.au/copyright
+
+
+### Approximate area marker (0.4.1)
+
+Both maps can show a fixed-size **Your area · Approximate** marker. Its position
+comes only from private PC settings, and follows the image when changing between
+regional and wider cloud views. No household coordinates or selected marker
+positions are bundled here. If a marker is missing, invalid or outside the visible
+crop, it stays hidden rather than being placed at an arbitrary edge. Marker
+positions are tied to their configured image product so switching products cannot
+silently reuse a position for another map.

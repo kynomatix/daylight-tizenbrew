@@ -9,7 +9,7 @@ It requires a private Daylight service running on your home computer.
 In TizenBrew, add a **GitHub module** and enter:
 
 ```text
-kynomatix/daylight-tizenbrew@v0.4.1
+kynomatix/daylight-tizenbrew@v0.5.0
 ```
 
 Repository: https://github.com/kynomatix/daylight-tizenbrew
@@ -17,7 +17,7 @@ Repository: https://github.com/kynomatix/daylight-tizenbrew
 The versioned entry avoids stale files from the unversioned download cache.
 When updating from the old entry, replace that module entry and restart
 TizenBrew. The TV's saved Daylight connection is shared across module versions.
-The cog opens **Settings**, which shows **Daylight 0.4.1**, read from the running dashboard code.
+The cog opens **Settings**, which shows **Daylight 0.5.0**, read from the running dashboard code.
 Use that to identify this build, separately from TizenBrew's own 2.x version
 or a cached version on its module tile. Module updates require no Developer
 Mode Host PC IP change; they are downloaded through TizenBrew.
@@ -131,7 +131,7 @@ This is a personal home dashboard. Check the provider terms before commercial
 redistribution or offering a hosted service. The app is not an official BOM,
 Open-Meteo, Samsung or Eveready product.
 
-## Clouds & rain (0.4.1)
+## Clouds & rain (0.5.0)
 
 Choose **Clouds & rain** for a satellite cloud loop or observed BOM rain radar.
 Use **Earlier**, **Later** and **Play / Pause** with the remote. The selected
@@ -160,7 +160,7 @@ https://www.bom.gov.au/catalogue/anon-ftp.shtml
 https://www.bom.gov.au/copyright
 
 
-### Approximate area marker (0.4.1)
+### Approximate area marker (0.5.0)
 
 Both maps can show a fixed-size **Your area · Approximate** marker. Its position
 comes only from private PC settings, and follows the image when changing between
@@ -169,3 +169,33 @@ positions are bundled here. If a marker is missing, invalid or outside the visib
 crop, it stays hidden rather than being placed at an arbitrary edge. Marker
 positions are tied to their configured image product so switching products cannot
 silently reuse a position for another map.
+
+
+## Themed radar map (0.5.0)
+
+Rain radar now uses a landscape vector map styled for Daylight, with crisp town
+labels, coastlines, a distance scale and the approximate area marker. **Full radar
+range** shows the whole source footprint; **Landscape view** returns to the TV
+layout. Observed BOM rain pixels keep their original geographic relationship to
+the map. The map does not increase the resolution or accuracy of the radar data.
+The dashed circle marks the radar range. There is no radar coverage outside it.
+
+All geography and selected place names come from the private paired service.
+No map tiles, household map geometry, selected area or local town list is bundled
+in this repository. The PC prepares its map locally from global datasets:
+Natural Earth land polygons (public domain) and GeoNames place names (CC BY 4.0).
+Map colours, clipping and label layout are modified by Daylight. Attribution:
+https://www.naturalearthdata.com/about/terms-of-use/
+https://www.geonames.org/
+https://creativecommons.org/licenses/by/4.0/
+
+### Watch / mouse pointer
+
+This module uses standard clickable HTML controls and does not hide the mouse.
+Samsung's native pointer support is a setting of the installed host package.
+The current upstream TizenBrew manifest does not explicitly enable it; Samsung
+TVs from 2021 default to disabled when that setting is absent. A module update
+cannot change TizenBrew's installed manifest. No software pointer workaround is
+claimed. Native pointer support requires a TizenBrew package built with
+`pointing-device-support="enable"`, then verification on the user's TV.
+https://developer.samsung.com/smarttv/develop/guides/user-interaction/mouse.html

@@ -1,7 +1,7 @@
 /* Generic display code. No household location, account, server or token belongs here. */
 (function () {
   'use strict';
-  var APP_VERSION = '0.4.1';
+  var APP_VERSION = '0.5.0';
   var $ = function (id) { return document.getElementById(id); };
   if ($('build-version')) $('build-version').textContent = 'Daylight ' + APP_VERSION;
   var state = null, demo = false, poll = null, view = 'overview', connection = null, connectionNotice = '';
@@ -220,7 +220,7 @@
   function switchView(name) { view = name; ['overview','energy','hourly','sky'].forEach(function (id) { $(id).hidden = name !== id; }); document.querySelectorAll('[data-view]').forEach(function (b) { b.classList.toggle('selected', b.dataset.view === name); }); if (name !== 'sky') { skyPlaying = false; skyGeneration++; } if (state) chart('large-chart', state.energy && state.energy.history); if (name === 'sky') renderSky(); }
   function skyData() { return state && state.imagery && state.imagery.layers && state.imagery.layers[skyLayer] || {}; }
   function stopSky() { skyPlaying = false; text('sky-play','Play'); }
-  function positionSkyMarker(marker, zoom, focusX, focusY) {
+  function positionSkyMarker(marker, zoom, focusX, focusY, customMap) {
     var pin = $('sky-marker'); pin.hidden = true;
     if (!marker || ['x','y','image_width','image_height'].some(function (key) { return typeof marker[key] !== 'number' || !isFinite(marker[key]); }) ||
         marker.x < 0 || marker.x > 1 || marker.y < 0 || marker.y > 1 || marker.image_width <= 0 || marker.image_height <= 0) return;
@@ -232,6 +232,10 @@
     var px = (w-imageW)/2+marker.x*imageW, py = (h-imageH)/2+marker.y*imageH;
     var left = w/2+zoom*(px-w/2)+(zoom > 1 ? (.5-focusX)*zoom*w : 0);
     var top = h/2+zoom*(py-h/2)+(zoom > 1 ? (.5-focusY)*zoom*h : 0);
+    if (customMap && window.DaylightRadar) {
+      var point=window.DaylightRadar.screenPoint(marker.x*512,marker.y*512,window.DaylightRadar.layout(w,h,skyWide,customMap.focus_y));
+      left=point.x; top=point.y;
+    }
     if (left < 0 || left > w || top < 0 || top > h) return;
     pin.style.left = left+'px'; pin.style.top = top+'px';
     pin.setAttribute('data-label-side',left > w*.65 ? 'left' : 'right'); pin.hidden = false;
@@ -251,6 +255,7 @@
     if (view !== 'sky') return;
     var data = skyData(), frames = data.frames || [], signature = skyLayer+frames.map(function (f) { return f.asset; }).join('');
     $('sky-marker').hidden = true;
+    $('radar-map').hidden = true; $('rain-key').hidden = true;
     if (signature !== skySignature) {
       // Old object URLs must not grow without bound as the PC rotates frames.
       clearSkyAssets(); skySignature = signature; skyIndex = frames.length-1; skyReadyTime = null;
@@ -261,8 +266,9 @@
     var stale = !latest || Date.now()/1000-latest > (skyLayer === 'rain' ? 1200 : 2700) || latest > Date.now()/1000+60 || serviceDisconnected || failed;
     text('sky-status',demo ? 'DEMO · NO LIVE IMAGERY' : !latest ? 'WAITING FOR BOM' : stale ? 'OLDER / CACHED IMAGES' : 'BOM · OBSERVED');
     text('sky-description',skyLayer === 'rain' ? 'Radar shows rain, hail or snow echoes, not all cloud. It can miss light rain or show echoes that never reach the ground.' : 'Satellite imagery shows cloud patterns over a broader area. The regional view is approximate, not a measurement of sunlight at your roof.');
-    text('sky-note',(failed ? failed+' ' : '')+'Observed movement only · no predicted path. '+(skyLayer === 'rain' ? 'Colours show radar echo intensity; the scale runs from light to intense.' : 'Satellite images show broader cloud patterns, not rainfall at your roof.'));
-    $('sky-extent').hidden = skyLayer !== 'clouds'; text('sky-extent',skyWide ? 'Regional view' : 'Wider view');
+    text('sky-note',(failed ? failed+' ' : '')+'Observed movement only · no predicted path. '+(skyLayer === 'rain' ? 'Outside the dashed ring: no radar coverage. Colours show radar echo intensity.' : 'Satellite images show broader cloud patterns, not rainfall at your roof.'));
+    $('sky-extent').hidden = skyLayer !== 'clouds' && !data.map; text('sky-extent',skyLayer === 'rain' ? (skyWide ? 'Landscape view' : 'Full radar range') : (skyWide ? 'Regional view' : 'Wider view'));
+    text('sky-credit',skyLayer === 'rain' && data.map ? 'Rain: © Bureau of Meteorology · Map: Natural Earth · Places: GeoNames (CC BY 4.0)' : '© Commonwealth of Australia, Bureau of Meteorology · Personal home display');
     $('sky-prev').disabled = frames.length < 2 || skyIndex <= 0; $('sky-next').disabled = frames.length < 2 || skyIndex >= frames.length-1;
     $('sky-play').disabled = frames.length < 2 || !!stale; if (stale) stopSky(); text('sky-play',skyPlaying ? 'Pause' : 'Play');
     if (!frames.length || demo) {
@@ -274,7 +280,8 @@
     skyIndex = Math.max(0,Math.min(frames.length-1,skyIndex));
     var frame = frames[skyIndex], generation = ++skyGeneration; skyLoading = true;
     if (skyReadyTime !== frame.time) { $('sky-empty').hidden = false; text('sky-empty','Loading observed image…'); }
-    var keys = [frame.asset,data.background,data.locations,data.legend];
+    var useCustomMap=skyLayer === 'rain' && data.map && window.DaylightRadar;
+    var keys = [frame.asset,useCustomMap ? null : data.background,useCustomMap ? null : data.locations,useCustomMap ? null : data.legend];
     Promise.all(keys.map(function (key) { return key ? skyAsset(key) : Promise.resolve(null); })).then(function (urls) {
       if (generation !== skyGeneration || view !== 'sky') return;
       ['sky-frame','sky-background','sky-locations','sky-legend'].forEach(function (id,i) { $(id).hidden = !urls[i]; if (urls[i]) $(id).src = urls[i]; });
@@ -284,7 +291,13 @@
       var xx = Math.max(0,Math.min(1,Number(viewport.x)||0)), yy = Math.max(0,Math.min(1,Number(viewport.y)||0));
       $('sky-images').style.transformOrigin = '50% 50%'; $('sky-images').style.transform = zoom > 1 ? 'translate('+((.5-xx)*zoom*100)+'%,'+((.5-yy)*zoom*100)+'%) scale('+zoom+')' : 'none';
       $('sky-map').setAttribute('data-layer',skyLayer); $('sky-images').hidden = false; $('sky-empty').hidden = true; skyReadyTime = frame.time;
-      positionSkyMarker(data.marker,zoom,xx,yy);
+      var customMap=skyLayer === 'rain' && data.map && window.DaylightRadar ? data.map : null;
+      if (customMap) {
+        var rect=$('sky-map').getBoundingClientRect();
+        $('radar-map').innerHTML=window.DaylightRadar.svg(customMap,urls[0],rect.width,rect.height,skyWide);
+        $('radar-map').hidden=false; $('sky-images').hidden=true; $('sky-legend-box').hidden=true; $('rain-key').hidden=false;
+      }
+      positionSkyMarker(data.marker,zoom,xx,yy,customMap);
       text('sky-time',formatTime(frame.time,{hour:'2-digit',minute:'2-digit'})+' · '+(skyIndex+1)+' / '+frames.length+' · '+age(frame.time)+(stale ? ' · OLD / CACHED' : ' · observed'));
       var first = frames[0].time, last = Math.max(first+60,latest), rows = state.energy && state.energy.history || [];
       rows = rows.filter(function (r) { return r.time >= first && r.time <= last; });
